@@ -69,34 +69,39 @@
   "Implements a subset of the http servlet request interface
    to satisfy the requirements of onelogin/java-saml"
   [request]
-  (proxy [HttpServletRequest] []
+  (let [param-map (request->param-map request)]
+    (proxy [HttpServletRequest] []
 
-    (getParameterMap []
-      (request->param-map request))
+      (getParameterMap []
+        param-map)
 
-    (getRequestURL []
-      (request->url request))
+      (getParameter [parameter]
+        (first (get param-map parameter)))
 
-    (getQueryString []
-      (request :query-string))
+      (getRequestURL []
+        (request->url request))
 
-    (getRequestURI []
-      (request :uri))
+      (getQueryString []
+        (request :query-string))
 
-    (isSecure []
-      (= (name (:scheme request)) "https"))))
+      (getRequestURI []
+        (request :uri))
+
+      (isSecure []
+        (= (name (:scheme request)) "https")))))
+
+(defn- get-relay-state [request]
+  (or (get-in request [:form-params :RelayState])
+      (get-in request [:form-params "RelayState"])
+      (get-in request [:query-params :RelayState])
+      (get-in request [:query-params "RelayState"])
+      (get-in request [:params :RelayState])
+      (get-in request [:params "RelayState"])))
 
 (defn- validate-relay-state [request]
-  (let [relay-state
-               (or (get-in request [:form-params :RelayState])
-                   (get-in request [:form-params "RelayState"])
-                   (get-in request [:query-params :RelayState])
-                   (get-in request [:query-params "RelayState"])
-                   (get-in request [:params :RelayState])
-                   (get-in request [:params "RelayState"]))
-        states (get-in request [:session ::relay] #{})]
+  (let [relay-state (get-relay-state request)
+        states      (get-in request [:session ::relay] #{})]
     (contains? states relay-state)))
-
 
 (defn authn-handler [settings]
   (let [saml-settings (map->settings settings)]
@@ -133,7 +138,8 @@
               {:status  302
                :headers {"Location" (get session ::next)}
                :session (-> session
-                            (dissoc ::next ::relay)
+                            (dissoc ::next)
+                            (update ::relay disj (get-relay-state request))
                             (assoc :identity ident)
                             (assoc ::auth-context auth-context)
                             (vary-meta assoc :recreate true))
@@ -175,15 +181,23 @@
     (shim-async
       (fn [request]
         (let [http-servlet-req (ring-request->http-request request)
-              http-servlet-res (proxy [HttpServletResponse] [])
+              redirect-promise (promise)
+              http-servlet-res (proxy [HttpServletResponse] []
+                                 (sendRedirect [location]
+                                   (deliver redirect-promise location)))
               auth             (Auth. saml-settings http-servlet-req http-servlet-res)
               _                (.processSLO auth true nil)
               session          (:session request)]
           (if (empty? (.getErrors auth))
-            {:status  302
-             :headers {"Location" (get session ::next)}
-             :session nil
-             :body    ""}
+            (if (realized? redirect-promise)
+              {:status  302
+               :headers {"Location" @redirect-promise}
+               :session nil
+               :body    ""}
+              {:status  302
+               :headers {"Location" (get session ::next)}
+               :session nil
+               :body    ""})
             (auth/throw-unauthorized
               {:message "Errors were encountered while processing the logout request."
                :errors  (.getErrors auth)})))))))

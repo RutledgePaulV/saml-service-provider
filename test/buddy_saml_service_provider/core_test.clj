@@ -27,7 +27,7 @@
    :onelogin.saml2.security.authnrequest_signed      true
    :onelogin.saml2.security.sign_metadata            true
    :onelogin.saml2.security.logoutrequest_signed     true
-   :onelogin.saml2.security.logoutresponse_signed    false
+   :onelogin.saml2.security.logoutresponse_signed    true
    :onelogin.saml2.organization.name                 "SP Java"
    :onelogin.saml2.organization.displayname          "SP Java Example"
    :onelogin.saml2.organization.url                  "http://sp.example.com"
