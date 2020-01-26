@@ -40,8 +40,8 @@
   (merge (keyword-keys (into {} (.getAttributes auth)))
          {:nameId                (.getNameId auth)
           :nameIdFormat          (.getNameIdFormat auth)
-          :nameidNameQualifier   (.getNameIdNameQualifier auth)
-          :nameidSPNameQualifier (.getNameIdSPNameQualifier auth)
+          :nameIdNameQualifier   (.getNameIdNameQualifier auth)
+          :nameIdSPNameQualifier (.getNameIdSPNameQualifier auth)
           :sessionIndex          (.getSessionIndex auth)}))
 
 (defn- request->url [request]
