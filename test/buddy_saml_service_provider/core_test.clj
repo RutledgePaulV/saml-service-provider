@@ -11,28 +11,33 @@
             [ring.util.response :as response]
             [ring.util.response :as response]
             [ring.middleware.session.memory :as memory]
-            [clojure.java.io :as io]))
+            [clojure.java.io :as io]
+            [clojure.pprint :as pprint]))
 
-(def store (memory/memory-store))
+(defonce store (memory/memory-store))
 
 (defn private-page [request]
-  {:status       200
-   :content-type "text/plain"
-   :body         (clojure.pprint/pprint (:identity request))})
+  {:status  200
+   :headers {"Content-Type" "text/plain"}
+   :body    (with-out-str (pprint/pprint (:identity request)))})
 
 (defn get-settings []
-  {:onelogin.saml2.security.want_messages_signed     false
-   :onelogin.saml2.security.want_assertions_signed   false
-   :onelogin.saml2.security.authnrequest_signed      false
-   :onelogin.saml2.security.sign_metadata            false
+  {:onelogin.saml2.security.want_messages_signed     true
+   :onelogin.saml2.security.want_assertions_signed   true
+   :onelogin.saml2.security.authnrequest_signed      true
+   :onelogin.saml2.security.sign_metadata            true
+   :onelogin.saml2.security.logoutrequest_signed     true
+   :onelogin.saml2.security.logoutresponse_signed    false
    :onelogin.saml2.organization.name                 "SP Java"
    :onelogin.saml2.organization.displayname          "SP Java Example"
    :onelogin.saml2.organization.url                  "http://sp.example.com"
    :onelogin.saml2.organization.lang                 "en"
    :onelogin.saml2.contacts.technical.given_name     "Technical Guy"
-   :onelogin.saml2.contacts.technical.email_address  "technical @example.com"
+   :onelogin.saml2.contacts.technical.email_address  "technical@example.com"
    :onelogin.saml2.contacts.support.given_name       "Support Guy"
    :onelogin.saml2.contacts.support.email_address    "support@example.com"
+   :onelogin.saml2.idp.single_logout_service.url     "http://localhost:7000/saml/slo"
+   :onelogin.saml2.sp.single_logout_service.url      "http://localhost:3000/confirm-logout"
    :onelogin.saml2.sp.assertion_consumer_service.url "http://localhost:3000/callback"
    :onelogin.saml2.sp.entityid                       "http://localhost:3000"
    :onelogin.saml2.sp.x509cert                       (slurp (io/resource "sp-public-cert.pem"))
@@ -51,7 +56,7 @@
     (handler request)))
 
 (defn metadata-handler [request]
-  (let [handler (bssp/metadata-response (get-settings))]
+  (let [handler (bssp/metadata-handler (get-settings))]
     (handler request)))
 
 (defn wrap-session-authentication [handler]
@@ -84,6 +89,11 @@
                     (assoc-in [:session :store] store))]
     (defaults/wrap-defaults handler options)))
 
+(defn get-confirm-logout-settings []
+  (-> (get-settings)
+      (assoc :onelogin.saml2.security.want_messages_signed false)))
+
+
 (def routes
   {"/"
    (-> private-page
@@ -94,6 +104,14 @@
    "/login"
    (-> login-handler
        wrap-handle-unauthenticated
+       wrap-default-middleware)
+
+   "/initiate-logout"
+   (-> (bssp/initiate-logout-handler (get-settings))
+       wrap-default-middleware)
+
+   "/confirm-logout"
+   (-> (bssp/perform-logout-handler (get-confirm-logout-settings))
        wrap-default-middleware)
 
    "/callback"

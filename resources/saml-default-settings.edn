@@ -4,15 +4,6 @@
  :onelogin.saml2.debug
  true
 
- :onelogin.saml2.sp.assertion_consumer_service.binding
- "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
-
- :onelogin.saml2.idp.single_sign_on_service.binding
- "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"
-
- :onelogin.saml2.security.nameid_encrypted
- false
-
  :onelogin.saml2.security.authnrequest_signed
  true
 
@@ -25,6 +16,9 @@
  :onelogin.saml2.security.sign_metadata
  true
 
+ :onelogin.saml2.security.nameid_encrypted
+ false
+
  :onelogin.saml2.security.want_nameid_encrypted
  false
 
@@ -33,6 +27,18 @@
 
  :onelogin.saml2.security.want_xml_validation
  true
+
+ :onelogin.saml2.sp.assertion_consumer_service.binding
+ "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
+
+ :onelogin.saml2.idp.single_sign_on_service.binding
+ "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"
+
+ :onelogin.saml2.sp.single_logout_service.binding
+ "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"
+
+ :onelogin.saml2.idp.single_logout_service.binding
+ "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"
 
  :onelogin.saml2.security.signature_algorithm
  "http://www.w3.org/2000/09/xmldsig#rsa-sha256"

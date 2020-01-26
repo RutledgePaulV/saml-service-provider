@@ -8,38 +8,41 @@
            (com.onelogin.saml2 Auth)
            (java.util UUID)))
 
-(defn string-keys [m]
+(defn- string-keys [m]
   (walk/stringify-keys m))
 
-(defn keyword-keys [m]
+(defn- keyword-keys [m]
   (walk/keywordize-keys m))
 
-(def DEFAULT_SETTINGS
+(def ^:private DEFAULT_SETTINGS
   (delay (-> (io/resource "saml-default-settings.edn")
              (io/input-stream)
              (slurp)
              (edn/read-string)
              (string-keys))))
 
-(defn ^Saml2Settings map->settings [m]
+(defn- ^Saml2Settings map->settings [m]
   (->> (merge (force DEFAULT_SETTINGS) (string-keys m))
        (.fromValues (SettingsBuilder.))
        (.build)))
 
 (defn- request->param-map [request]
   (->>
-    (merge (:params request)
-           (:form-params request)
-           (:query-params request))
+    (merge (:params request) (:form-params request) (:query-params request))
     (string-keys)
-    (reduce-kv (fn [m k v] (assoc m k (if (coll? v)
-                                        (into-array String v)
-                                        (into-array String [v])))) {})))
+    (reduce-kv (fn [m k v]
+                 (let [vs (if (coll? v)
+                            (into-array String v)
+                            (into-array String [v]))]
+                   (assoc m k vs))) {})))
 
 (defn- response->map [^Auth auth]
-  (merge (keyword-keys
-           (into {} (.getAttributes auth)))
-         {:nameId (.getNameId auth)}))
+  (merge (keyword-keys (into {} (.getAttributes auth)))
+         {:nameId                (.getNameId auth)
+          :nameIdFormat          (.getNameIdFormat auth)
+          :nameidNameQualifier   (.getNameIdNameQualifier auth)
+          :nameidSPNameQualifier (.getNameIdSPNameQualifier auth)
+          :sessionIndex          (.getSessionIndex auth)}))
 
 (defn- request->url [request]
   (let [proto (name (:scheme request))
@@ -53,7 +56,7 @@
       (.append (:uri request)))))
 
 (defn- shim-async [handler]
-  (fn
+  (fn async-ring-handler-shim
     ([request] (handler request))
     ([req resp raise]
      (try
@@ -62,7 +65,7 @@
          (raise e))))))
 
 
-(defn ^HttpServletRequest ring-request->http-request
+(defn- ^HttpServletRequest ring-request->http-request
   "Implements a subset of the http servlet request interface
    to satisfy the requirements of onelogin/java-saml"
   [request]
@@ -83,15 +86,24 @@
     (isSecure []
       (= (name (:scheme request)) "https"))))
 
+(defn- validate-relay-state [request]
+  (let [relay-state
+               (or (get-in request [:form-params :RelayState])
+                   (get-in request [:form-params "RelayState"])
+                   (get-in request [:query-params :RelayState])
+                   (get-in request [:query-params "RelayState"])
+                   (get-in request [:params :RelayState])
+                   (get-in request [:params "RelayState"]))
+        states (get-in request [:session ::relay] #{})]
+    (contains? states relay-state)))
+
+
 (defn authn-handler [settings]
   (let [saml-settings (map->settings settings)]
     (shim-async
       (fn [request]
         (let [http-servlet-req (ring-request->http-request request)
-              redirect         (promise)
-              http-servlet-res (proxy [HttpServletResponse] []
-                                 (sendRedirect [location]
-                                   (deliver redirect location)))
+              http-servlet-res (proxy [HttpServletResponse] [])
               auth             (Auth. saml-settings http-servlet-req http-servlet-res)
               relay-state      (str (UUID/randomUUID))
               next             (get-in request [:query-params :next])
@@ -102,17 +114,6 @@
                         (assoc ::next (or next "/"))
                         (update ::relay (fnil conj #{}) relay-state))
            :body    ""})))))
-
-(defn validate-relay-state [request]
-  (let [relay-state
-               (or (get-in request [:form-params :RelayState])
-                   (get-in request [:form-params "RelayState"])
-                   (get-in request [:query-params :RelayState])
-                   (get-in request [:query-params "RelayState"])
-                   (get-in request [:params :RelayState])
-                   (get-in request [:params "RelayState"]))
-        states (get-in request [:session ::relay] #{})]
-    (contains? states relay-state)))
 
 (defn acs-handler [auth-fn settings]
   (let [saml-settings (map->settings settings)]
@@ -127,12 +128,14 @@
                                     (.isAuthenticated auth)
                                     (validate-relay-state request))]
           (if (identity valid)
-            (let [auth-context (auth-fn (response->map auth))]
+            (let [auth-context (response->map auth)
+                  ident        (auth-fn auth-context)]
               {:status  302
                :headers {"Location" (get session ::next)}
                :session (-> session
                             (dissoc ::next ::relay)
-                            (assoc :identity auth-context)
+                            (assoc :identity ident)
+                            (assoc ::auth-context auth-context)
                             (vary-meta assoc :recreate true))
                :body    ""})
             (auth/throw-unauthorized
@@ -145,11 +148,51 @@
                 (assoc :message "Provided relay state wasn't in the set of expected relay states for the user's session.")))))))))
 
 
-(defn metadata-response [settings]
+(defn initiate-logout-handler [settings]
+  (let [saml-settings (map->settings settings)]
+    (shim-async
+      (fn [request]
+        (if-some [{:keys [nameId sessionIndex nameIdFormat nameIdNameQualifier nameIdSPNameQualifier]}
+                  (get-in request [:session ::auth-context])]
+          (let [http-servlet-req (ring-request->http-request request)
+                http-servlet-res (proxy [HttpServletResponse] [])
+                auth             (Auth. saml-settings http-servlet-req http-servlet-res)
+                relay-state      (str (UUID/randomUUID))
+                next             (get-in request [:query-params :next])
+                redirect         (.logout auth relay-state nameId sessionIndex true nameIdFormat nameIdNameQualifier nameIdSPNameQualifier)]
+            {:status  302
+             :headers {"Location" redirect}
+             :session (-> (:session request)
+                          (assoc ::next (or next "/"))
+                          (update ::relay (fnil conj #{}) relay-state))
+             :body    ""})
+          (auth/throw-unauthorized
+            {:message "You cannot logout because you're not logged in using this mechanism."}))))))
+
+
+(defn perform-logout-handler [settings]
+  (let [saml-settings (map->settings settings)]
+    (shim-async
+      (fn [request]
+        (let [http-servlet-req (ring-request->http-request request)
+              http-servlet-res (proxy [HttpServletResponse] [])
+              auth             (Auth. saml-settings http-servlet-req http-servlet-res)
+              _                (.processSLO auth true nil)
+              session          (:session request)]
+          (if (empty? (.getErrors auth))
+            {:status  302
+             :headers {"Location" (get session ::next)}
+             :session nil
+             :body    ""}
+            (auth/throw-unauthorized
+              {:message "Errors were encountered while processing the logout request."
+               :errors  (.getErrors auth)})))))))
+
+
+(defn metadata-handler [settings]
   (let [saml-settings (map->settings settings)
         xml           (.getSPMetadata saml-settings)]
-    (shim-async
-      (fn [request] {:status 200 :headers {"Content-Type" "application/xml"} :body xml}))))
+    (shim-async (fn [_] {:status 200 :headers {"Content-Type" "application/xml"} :body xml}))))
 
 
 
