@@ -15,14 +15,14 @@
   (walk/keywordize-keys m))
 
 (def DEFAULT_SETTINGS
-  (-> (io/resource "saml-default-settings.edn")
-      (io/input-stream)
-      (slurp)
-      (edn/read-string)
-      (string-keys)))
+  (delay (-> (io/resource "saml-default-settings.edn")
+             (io/input-stream)
+             (slurp)
+             (edn/read-string)
+             (string-keys))))
 
 (defn ^Saml2Settings map->settings [m]
-  (->> (merge DEFAULT_SETTINGS (string-keys m))
+  (->> (merge (force DEFAULT_SETTINGS) (string-keys m))
        (.fromValues (SettingsBuilder.))
        (.build)))
 
@@ -32,21 +32,24 @@
            (:form-params request)
            (:query-params request))
     (string-keys)
-    (reduce-kv (fn [m k v] (assoc m k (if (coll? v) (into-array String v) v))) {})))
+    (reduce-kv (fn [m k v] (assoc m k (if (coll? v)
+                                        (into-array String v)
+                                        (into-array String [v])))) {})))
 
 (defn- response->map [^Auth auth]
-  (merge (keyword-keys (.getAttributes auth)) {:nameId (.getNameId auth)}))
+  (merge (keyword-keys
+           (into {} (.getAttributes auth)))
+         {:nameId (.getNameId auth)}))
 
 (defn- request->url [request]
-  (let [proto (name (:protocol request))
+  (let [proto (name (:scheme request))
+        port  (:server-port request)
         ports {"http" 80 "https" 443}]
     (doto (StringBuffer.)
       (.append proto)
       (.append "://")
       (.append (:server-name request))
-      (.append (if (= (get ports proto) (:port request))
-                 ""
-                 (str ":" (:port request))))
+      (.append (if (= (get ports proto) port) "" (str ":" port)))
       (.append (:uri request)))))
 
 (defn- shim-async [handler]
@@ -78,7 +81,7 @@
       (request :uri))
 
     (isSecure []
-      (= (name (:protocol request)) "https"))))
+      (= (name (:scheme request)) "https"))))
 
 (defn authn-handler [settings]
   (let [saml-settings (map->settings settings)]
@@ -90,20 +93,26 @@
                                  (sendRedirect [location]
                                    (deliver redirect location)))
               auth             (Auth. saml-settings http-servlet-req http-servlet-res)
-              relay-state      (UUID/randomUUID)
+              relay-state      (str (UUID/randomUUID))
               next             (get-in request [:query-params :next])
               redirect         (.login auth relay-state false false false true nil)]
           {:status  302
            :headers {"Location" redirect}
            :session (-> (:session request)
-                        (assoc ::next next)
+                        (assoc ::next (or next "/"))
                         (update ::relay (fnil conj #{}) relay-state))
            :body    ""})))))
 
 (defn validate-relay-state [request]
-  (let [relay-state (or (get-in request [:query-params :RelayState])
-                        (get-in request [:query-params "RelayState"]))]
-    (contains? (get-in request [:session ::relay] #{}) relay-state)))
+  (let [relay-state
+               (or (get-in request [:form-params :RelayState])
+                   (get-in request [:form-params "RelayState"])
+                   (get-in request [:query-params :RelayState])
+                   (get-in request [:query-params "RelayState"])
+                   (get-in request [:params :RelayState])
+                   (get-in request [:params "RelayState"]))
+        states (get-in request [:session ::relay] #{})]
+    (contains? states relay-state)))
 
 (defn acs-handler [auth-fn settings]
   (let [saml-settings (map->settings settings)]
@@ -113,10 +122,11 @@
               http-servlet-res (proxy [HttpServletResponse] [])
               auth             (Auth. saml-settings http-servlet-req http-servlet-res)
               _                (.processResponse auth)
-              session          (get request :session)]
-          (if (and (empty (.getErrors auth))
-                   (.isAuthenticated auth)
-                   (validate-relay-state request))
+              session          (get request :session)
+              valid            (and (empty? (.getErrors auth))
+                                    (.isAuthenticated auth)
+                                    (validate-relay-state request))]
+          (if (identity valid)
             (let [auth-context (auth-fn (response->map auth))]
               {:status  302
                :headers {"Location" (get session ::next)}
