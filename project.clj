@@ -4,7 +4,7 @@
   [[org.clojure/clojure "1.10.1"]
    [com.onelogin/java-saml "2.5.0"]
    [javax.servlet/javax.servlet-api "3.1.0"]
-   [buddy/buddy-auth "2.2.0"]]
+   [ring/ring-core "1.8.0"]]
 
   :profiles
   {:test {:dependencies   [[ring "1.8.0"]

@@ -8,8 +8,8 @@ if ! command -v saml-idp >/dev/null; then
 fi
 
 saml-idp \
-  --acsUrl http://localhost:3000/callback \
-  --sloUrl http://localhost:3000/confirm-logout \
+  --acsUrl http://localhost:3000/saml/acs \
+  --sloUrl http://localhost:3000/saml/confirm-logout \
   --audience http://localhost:3000 \
   --host localhost \
   --cert ./testfiles/idp-public-cert.pem \
