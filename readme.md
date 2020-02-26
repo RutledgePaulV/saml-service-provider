@@ -40,7 +40,9 @@ LOGOUT CALLBACK:
 
 ### Options
 
-Valid options are exactly those used by [onelogin/java-saml](https://github.com/onelogin/java-saml).
+Valid options are exactly those offered by [onelogin/java-saml](https://github.com/onelogin/java-saml).
+
+This library does provide [default values](./resources/saml-default-settings.edn) for many options.
 
 ---
 
