@@ -1,4 +1,4 @@
-(ns buddy-saml-service-provider.utils
+(ns saml-service-provider.utils
   (:require [clojure.edn :as edn]
             [clojure.walk :as walk]
             [clojure.java.io :as io])

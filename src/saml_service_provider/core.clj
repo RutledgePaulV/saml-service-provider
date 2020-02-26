@@ -1,6 +1,6 @@
-(ns buddy-saml-service-provider.core
+(ns saml-service-provider.core
   (:require [clojure.string :as strings]
-            [buddy-saml-service-provider.utils :as utils]
+            [saml-service-provider.utils :as utils]
             [ring.util.codec :as codec])
   (:import (javax.servlet.http HttpServletResponse)
            (com.onelogin.saml2 Auth)

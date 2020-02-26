@@ -1,11 +1,12 @@
-(ns buddy-saml-service-provider.core-test
+(ns saml-service-provider.core-test
   (:require [clojure.test :refer :all]
-            [buddy-saml-service-provider.core :as bssp]
+            [saml-service-provider.core :as bssp]
             [ring.adapter.jetty :as jetty]
             [ring.middleware.defaults :as defaults]
             [ring.middleware.session.memory :as memory]
             [clojure.java.io :as io]
-            [clojure.pprint :as pprint]))
+            [clojure.pprint :as pprint])
+  (:import (org.eclipse.jetty.server Server)))
 
 (defonce store (memory/memory-store))
 
@@ -63,5 +64,5 @@
   (swap! server
          (fn [old]
            (when (some? old)
-             (.stop old))
+             (.stop ^Server old))
            (create-server))))
