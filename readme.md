@@ -17,6 +17,25 @@ Delegates to onelogin/java-saml for the actual xml validation and parsing.
 
 [Please see the example server.](test/saml_service_provider/core_test.clj)
 
+Default endpoints are:
+
+``` 
+INITIATE LOGIN: 
+ http://localhost:3000/saml/login
+
+ACS CALLBACK: 
+ http://localhost:3000/saml/acs
+
+SP METADATA:
+ http://localhost:3000/saml/metadata
+
+INITIATE LOGOUT:
+ http://localhost:3000/saml/initiate-logout
+
+LOGOUT CALLBACK:
+ http://localhost:3000/saml/confirm-logout
+```
+
 ---
 
 ### Options
