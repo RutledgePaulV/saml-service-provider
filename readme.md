@@ -1,7 +1,6 @@
 [![Clojars Project](https://img.shields.io/clojars/v/org.clojars.rutledgepaulv/saml-service-provider.svg)](https://clojars.org/org.clojars.rutledgepaulv/saml-service-provider)
 
-Ring handlers for implementing saml authentication with buddy auth. 
-Delegates to onelogin/java-saml for the actual xml validation and parsing.
+Ring handlers for implementing saml authentication. Delegates to onelogin/java-saml for the actual xml validation and parsing.
 
 ---
 
