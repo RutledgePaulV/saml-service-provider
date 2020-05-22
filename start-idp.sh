@@ -1,10 +1,14 @@
-#!/usr/bin/env zsh
+#!/usr/bin/env bash
+
+start=$PWD
 
 if ! command -v saml-idp >/dev/null; then
   echo "Installing saml-idp from source for testing."
-  git clone git@github.com:mcguinness/saml-idp.git /tmp/saml-idp
-  cd /tmp/saml-idp && npm install && npm link && cd ..
-  rm -rf /tmp/saml-idp
+  rm -rf ~/.saml-idp
+  mkdir ~/.saml-idp
+  git clone git@github.com:mcguinness/saml-idp.git ~/.saml-idp
+  # shellcheck disable=SC2164
+  cd ~/.saml-idp && npm install && npm link && cd "$start"
 fi
 
 saml-idp \
