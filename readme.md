@@ -4,14 +4,6 @@ Ring handlers for implementing saml authentication. Delegates to onelogin/java-s
 
 ---
 
-### Install
-
-```clojure
-[org.clojars.rutledgepaulv/saml-service-provider "0.1.0"]
-```
-
----
-
 ### Usage
 
 [Please see the example server.](test/saml_service_provider/core_test.clj)
