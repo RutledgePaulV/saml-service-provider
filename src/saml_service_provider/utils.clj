@@ -1,7 +1,8 @@
 (ns saml-service-provider.utils
   (:require [clojure.edn :as edn]
             [clojure.walk :as walk]
-            [clojure.java.io :as io])
+            [clojure.java.io :as io]
+            [clojure.string :as strings])
   (:import (javax.servlet.http HttpServletRequest)
            (com.onelogin.saml2 Auth)
            (com.onelogin.saml2.settings SettingsBuilder Saml2Settings)))
@@ -97,15 +98,21 @@
       (get-in request [:params "RelayState"])))
 
 (defn get-identity [request]
-  (or (get-in request [:identity])
-      (get-in request [:session :identity])))
+  (or (get-in request [:saml-service-provider.core/identity])
+      (get-in request [:session :saml-service-provider.core/identity])))
+
+(defn valid-next-target? [next]
+  (and next (strings/starts-with? next "/")))
 
 (defn get-next-url [request]
-  (or (get-in request [:session ::next]) "/"))
+  (let [it (or (get-in request [:query-params :next])
+               (get-in request [:query-params "next"])
+               (get-in request [:session :saml-service-provider.core/next]))]
+    (if (valid-next-target? it) it "/")))
 
 (defn throw-exception
   ([msg]
    (throw-exception msg {}))
   ([msg data]
-   (let [extras {:type :saml-service-provider/error :message msg}]
+   (let [extras {:type :saml-service-provider.core/error :message msg}]
      (throw (ex-info msg (merge data extras))))))

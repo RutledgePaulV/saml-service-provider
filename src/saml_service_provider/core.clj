@@ -15,12 +15,12 @@
               http-servlet-res (proxy [HttpServletResponse] [])
               auth             (Auth. saml-settings http-servlet-req http-servlet-res)
               relay-state      (str (UUID/randomUUID))
-              next             (get-in request [:query-params :next])
+              next             (utils/get-next-url request)
               redirect         (.login auth relay-state false false false true nil)]
           {:status  302
            :headers {"Location" redirect}
            :session (-> (:session request)
-                        (assoc ::next (or next "/"))
+                        (assoc ::next next)
                         (update ::relay (fnil conj #{}) relay-state))
            :body    ""})))))
 
@@ -44,7 +44,7 @@
                :session (-> session
                             (dissoc ::next)
                             (update ::relay disj relay-state)
-                            (assoc :identity ident)
+                            (assoc ::identity ident)
                             (assoc ::auth-context auth-context)
                             (vary-meta assoc :recreate true))
                :body    ""})
@@ -68,12 +68,12 @@
                 http-servlet-res (proxy [HttpServletResponse] [])
                 auth             (Auth. saml-settings http-servlet-req http-servlet-res)
                 relay-state      (str (UUID/randomUUID))
-                next             (get-in request [:query-params :next])
+                next             (utils/get-next-url request)
                 redirect         (.logout auth relay-state nameId sessionIndex true nameIdFormat nameIdNameQualifier nameIdSPNameQualifier)]
             {:status  302
              :headers {"Location" redirect}
              :session (-> (:session request)
-                          (assoc ::next (or next "/"))
+                          (assoc ::next next)
                           (update ::relay (fnil conj #{}) relay-state))
              :body    ""})
           (utils/throw-exception "You cannot logout because you're not logged in."))))))
@@ -125,7 +125,7 @@
         initiate-logout-handle (initiate-logout-handler onelogin-settings)
         confirm-logout-handler (perform-logout-handler
                                  (assoc onelogin-settings
-                                        :onelogin.saml2.security.want_messages_signed
+                                   :onelogin.saml2.security.want_messages_signed
                                    false))]
     (utils/shim-async
       (fn [request]
@@ -141,7 +141,7 @@
           [:post (get endpoints :confirm-logout)]
           (confirm-logout-handler request)
           (if-some [identity (utils/get-identity request)]
-            (handler (assoc request :identity identity))
+            (handler (assoc request ::identity identity))
             (let [after-authenticate
                   (codec/url-encode
                     (if-not (strings/blank? (:query-string request))

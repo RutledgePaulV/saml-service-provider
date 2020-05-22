@@ -13,7 +13,7 @@
 (defn private-page [request]
   {:status  200
    :headers {"Content-Type" "text/plain"}
-   :body    (with-out-str (pprint/pprint (:identity request)))})
+   :body    (with-out-str (pprint/pprint (:saml-service-provider.core/identity request)))})
 
 (def settings
   {:onelogin.saml2.security.want_messages_signed     true
