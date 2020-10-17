@@ -11,14 +11,14 @@
 
   :dependencies
   [[org.clojure/clojure "1.10.1"]
-   [com.onelogin/java-saml "2.5.0"]
+   [com.onelogin/java-saml "2.6.0"]
    [javax.servlet/javax.servlet-api "3.1.0"]
    [ring/ring-codec "1.1.2"]]
 
   :profiles
   {:test
    {:dependencies
-    [[ring "1.8.1" :scope "test"]
+    [[ring "1.8.2" :scope "test"]
      [ring/ring-defaults "0.3.2" :scope "test"]
      [org.slf4j/slf4j-simple "1.7.30" :scope "test"]]
     :resource-paths

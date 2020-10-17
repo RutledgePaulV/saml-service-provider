@@ -19,7 +19,7 @@
               redirect         (.login auth relay-state false false false true nil)]
           {:status  302
            :headers {"Location" redirect}
-           :session (-> (:session request)
+           :session (-> (:session request {})
                         (assoc ::next next)
                         (update ::relay (fnil conj #{}) relay-state))
            :body    ""})))))
@@ -32,7 +32,7 @@
               http-servlet-res (proxy [HttpServletResponse] [])
               auth             (Auth. saml-settings http-servlet-req http-servlet-res)
               _                (.processResponse auth)
-              session          (get request :session)
+              session          (get request :session {})
               relay-state      (utils/get-relay-state request)
               valid-relay      (contains? (get-in request [:session ::relay] #{}) relay-state)
               valid-callback   (and (empty? (.getErrors auth)) (.isAuthenticated auth) valid-relay)]
@@ -140,14 +140,17 @@
           (initiate-logout-handle request)
           [:post (get endpoints :confirm-logout)]
           (confirm-logout-handler request)
-          (if-some [identity (utils/get-identity request)]
-            (handler (assoc request ::identity identity))
-            (let [after-authenticate
-                  (codec/url-encode
-                    (if-not (strings/blank? (:query-string request))
-                      (str (:uri request) (str "?" (:query-string request)))
-                      (:uri request)))
-                  redirect
-                  (str (get endpoints :authn) "?next=" after-authenticate)]
-              {:status 302 :headers {"Location" redirect} :body ""})))))))
+          (let [identity (utils/get-identity request)
+                expired  (utils/session-expired? request)]
+            (if (and (some? identity) (not expired))
+              (handler (assoc request ::identity identity))
+              (let [after-authenticate
+                    (codec/url-encode
+                      (if-not (strings/blank? (:query-string request))
+                        (str (:uri request) (str "?" (:query-string request)))
+                        (:uri request)))
+                    redirect
+                    (str (get endpoints :authn) "?next=" after-authenticate)]
+                (cond-> {:status 302 :headers {"Location" redirect} :body ""}
+                  expired (assoc :session nil))))))))))
 

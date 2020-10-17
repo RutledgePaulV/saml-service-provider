@@ -5,7 +5,8 @@
             [clojure.string :as strings])
   (:import (javax.servlet.http HttpServletRequest)
            (com.onelogin.saml2 Auth)
-           (com.onelogin.saml2.settings SettingsBuilder Saml2Settings)))
+           (com.onelogin.saml2.settings SettingsBuilder Saml2Settings)
+           [java.time Instant]))
 
 (defn string-keys [m]
   (walk/stringify-keys m))
@@ -41,7 +42,8 @@
           :nameIdFormat          (.getNameIdFormat auth)
           :nameIdNameQualifier   (.getNameIdNameQualifier auth)
           :nameIdSPNameQualifier (.getNameIdSPNameQualifier auth)
-          :sessionIndex          (.getSessionIndex auth)}))
+          :sessionIndex          (.getSessionIndex auth)
+          :sessionExpiration     (some-> (.getSessionExpiration auth) (.getMillis))}))
 
 (defn request->url [request]
   (let [proto (name (:scheme request))
@@ -100,6 +102,10 @@
 (defn get-identity [request]
   (or (get-in request [:saml-service-provider.core/identity])
       (get-in request [:session :saml-service-provider.core/identity])))
+
+(defn session-expired? [request]
+  (when-some [expiration (get-in request [:session :saml-service-provider.core/auth-context :sessionExpiration])]
+    (let [now-in-millis (.toEpochMilli (Instant/now))] (<= expiration now-in-millis))))
 
 (defn valid-next-target? [next]
   (and next (strings/starts-with? next "/")))
