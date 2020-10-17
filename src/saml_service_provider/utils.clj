@@ -5,31 +5,26 @@
             [clojure.string :as strings])
   (:import (javax.servlet.http HttpServletRequest)
            (com.onelogin.saml2 Auth)
-           (com.onelogin.saml2.settings SettingsBuilder Saml2Settings)
-           [java.time Instant]))
-
-(defn string-keys [m]
-  (walk/stringify-keys m))
-
-(defn keyword-keys [m]
-  (walk/keywordize-keys m))
+           (com.onelogin.saml2.settings SettingsBuilder Saml2Settings IdPMetadataParser)
+           [java.time Instant]
+           [java.net URL]))
 
 (def DEFAULT_SETTINGS
   (delay (-> (io/resource "saml-default-settings.edn")
              (io/input-stream)
              (slurp)
              (edn/read-string)
-             (string-keys))))
+             (walk/stringify-keys))))
 
 (defn ^Saml2Settings map->settings [m]
-  (->> (merge (force DEFAULT_SETTINGS) (string-keys m))
+  (->> (merge (force DEFAULT_SETTINGS) (walk/stringify-keys m))
        (.fromValues (SettingsBuilder.))
        (.build)))
 
 (defn request->param-map [request]
   (->>
     (merge (:params request) (:form-params request) (:query-params request))
-    (string-keys)
+    (walk/stringify-keys)
     (reduce-kv (fn [m k v]
                  (let [vs (if (coll? v)
                             (into-array String v)
@@ -37,7 +32,7 @@
                    (assoc m k vs))) {})))
 
 (defn response->map [^Auth auth]
-  (merge (keyword-keys (into {} (.getAttributes auth)))
+  (merge (into {} (map (fn [[k v]] [(keyword k) (vec v)])) (.getAttributes auth))
          {:nameId                (.getNameId auth)
           :nameIdFormat          (.getNameIdFormat auth)
           :nameIdNameQualifier   (.getNameIdNameQualifier auth)
@@ -120,5 +115,41 @@
   ([msg]
    (throw-exception msg {}))
   ([msg data]
-   (let [extras {:type :saml-service-provider.core/error :message msg}]
+   (let [extras {:type :saml-service-provider.core/error}]
      (throw (ex-info msg (merge data extras))))))
+
+(defn parse-idp-metadata [^String url]
+  (->> (IdPMetadataParser/parseRemoteXML (URL. url))
+       (into {} (map (fn [[k v]] [(keyword k) v])))))
+
+(alter-var-root #'parse-idp-metadata memoize)
+
+(defn request->base-url [request]
+  (str (request->url (assoc request :uri ""))))
+
+(defn ^Saml2Settings settings-for-domain [{:keys [onelogin-settings endpoints idp-metadata-url]} base-url]
+  (cond-> {}
+    (not (strings/blank? idp-metadata-url))
+    (merge (parse-idp-metadata idp-metadata-url))
+    :always (merge {:onelogin.saml2.sp.entityid
+                    base-url
+                    :onelogin.saml2.sp.assertion_consumer_service.url
+                    (str base-url (get endpoints :acs))
+                    :onelogin.saml2.sp.single_logout_service.url
+                    (str base-url (get endpoints :confirm-logout))})
+    :always (merge onelogin-settings)
+    :always map->settings))
+
+(alter-var-root #'settings-for-domain memoize)
+
+(defn disable-csrf-for-endpoints!
+  "Monkey patches ring.middleware.anti-forgery if present to exempt requests
+   matching a particular request method and request uri from requiring a valid
+   csrf token."
+  [endpoints]
+  (when-some [v (requiring-resolve 'ring.middleware.anti-forgery/valid-request?)]
+    (alter-var-root v
+      (fn [old-fn]
+        (fn valid-request? [strategy request read-token]
+          (or (contains? endpoints [(:request-method request) (:uri request)])
+              (old-fn strategy request read-token)))))))

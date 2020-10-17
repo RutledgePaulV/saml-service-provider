@@ -1,31 +1,78 @@
 [![Clojars Project](https://img.shields.io/clojars/v/org.clojars.rutledgepaulv/saml-service-provider.svg)](https://clojars.org/org.clojars.rutledgepaulv/saml-service-provider)
 
-Ring handlers for implementing saml authentication. Delegates to onelogin/java-saml for the actual xml validation and parsing.
+Ring handlers/middleware for implementing saml authentication. Delegates to onelogin/java-saml for the actual xml
+validation and parsing. Many thanks to the onelogin team for saving me from the hard parts!
 
 ---
 
 ### Usage
 
-[Please see the example server.](test/saml_service_provider/core_test.clj)
+Here is an example of wiring this middleware into a ring app. Note that ring.middleware.anti-forgery is monkey-patched
+by this library (if present)
+to exempt your SAML endpoints that consume form posts from an IDP.
+
+```clojure 
+
+; normal ring stuff
+(require '[ring.middleware.defaults :as defaults])
+(require '[ring.adapter.jetty :as jetty])
+(require '[clojure.java.io :as io])
+
+; saml service provider
+(require '[saml-service-provider.core :as sspc])
+
+
+(defn whoami-handler [request]
+  (let [saml-data  (:saml-service-provider.core/identity request)
+        email-addr (get-in saml-data [:email 0])]
+    {:status  200
+     :headers {"Content-Type" "text/plain"}
+     :body    (format "You're authenticated as %s" email-addr)}))
+
+(def settings
+  {:idp-metadata-url
+   "http://localhost:7000/metadata"
+   :onelogin-settings
+   {:onelogin.saml2.sp.x509cert   (slurp (io/resource "sp-public-cert.pem"))
+    :onelogin.saml2.sp.privatekey (slurp (io/resource "sp-private-key.pem"))}})
+
+(def application
+  (-> private-page
+      (sspc/wrap-saml-authentication settings)
+      (defaults/wrap-defaults defaults/site-defaults)))
+
+(jetty/run-jetty #'authenticated-site-handler {:port 3000 :join? false})
+
+```
 
 Default endpoints are:
 
 ``` 
+
 INITIATE LOGIN: 
- http://localhost:3000/saml/login
+ /saml/login
 
 ACS CALLBACK: 
- http://localhost:3000/saml/acs
+ /saml/acs
 
 SP METADATA:
- http://localhost:3000/saml/metadata
+ /saml/metadata
 
 INITIATE LOGOUT:
- http://localhost:3000/saml/initiate-logout
+ /saml/initiate-logout
 
 LOGOUT CALLBACK:
- http://localhost:3000/saml/confirm-logout
+ /saml/confirm-logout
+ 
 ```
+
+---
+
+### SAML Metadata
+
+This library serves service provider metadata based on your configuration and also supports configuring the
+authentication middleware using either an idp metadata url or explicit idp settings. I recommend using metadata on both
+sides because it greatly reduces the burden of SAML setup and miscommunications.
 
 ---
 
