@@ -13,14 +13,10 @@ to exempt your SAML endpoints that consume form posts from an IDP.
 
 ```clojure 
 
-; normal ring stuff
+(require '[saml-service-provider.core :as sspc])
 (require '[ring.middleware.defaults :as defaults])
 (require '[ring.adapter.jetty :as jetty])
 (require '[clojure.java.io :as io])
-
-; saml service provider
-(require '[saml-service-provider.core :as sspc])
-
 
 (defn whoami-handler [request]
   (let [saml-data  (:saml-service-provider.core/identity request)
