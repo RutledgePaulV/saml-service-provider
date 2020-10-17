@@ -32,8 +32,8 @@
             saml-settings    (utils/settings-for-domain settings base-url)
             http-servlet-req (utils/ring-request->http-request request)
             http-servlet-res (proxy [HttpServletResponse] [])
-            auth             (Auth. saml-settings http-servlet-req http-servlet-res)
-            _                (.processResponse auth)
+            auth             (doto (Auth. saml-settings http-servlet-req http-servlet-res)
+                               (.processResponse))
             session          (get request :session {})
             relay-state      (utils/get-relay-state request)
             valid-relay      (contains? (get-in request [:session ::relay] #{}) relay-state)
@@ -92,8 +92,8 @@
             http-servlet-res (proxy [HttpServletResponse] []
                                (sendRedirect [location]
                                  (deliver redirect-promise location)))
-            auth             (Auth. saml-settings http-servlet-req http-servlet-res)
-            _                (.processSLO auth true nil)
+            auth             (doto (Auth. saml-settings http-servlet-req http-servlet-res)
+                               (.processSLO true nil))
             session          (:session request)]
         (if (empty? (.getErrors auth))
           ; idp initiated logout
@@ -147,15 +147,13 @@
                               :metadata        "/saml/metadata"
                               :initiate-logout "/saml/initiate-logout"
                               :confirm-logout  "/saml/confirm-logout"}}}]
-  (let [final-settings         {:endpoints         endpoints
-                                :idp-metadata-url  idp-metadata-url
-                                :onelogin-settings onelogin-settings}
-        authn-handle           (authn-handler final-settings)
-        acs-handle             (acs-handler auth-fn final-settings)
-        metadata-handle        (metadata-handler final-settings)
-        initiate-logout-handle (initiate-logout-handler final-settings)
-        final-logout-settings  (assoc-in final-settings [:onelogin-settings :onelogin.saml2.security.want_messages_signed] false)
-        confirm-logout-handler (perform-logout-handler final-logout-settings)]
+  (let [settings        {:endpoints endpoints :idp-metadata-url idp-metadata-url :onelogin-settings onelogin-settings}
+        logout-settings (assoc-in settings [:onelogin-settings :onelogin.saml2.security.want_messages_signed] false)
+        dispatch-table  {[:get (get endpoints :authn)]           (authn-handler settings)
+                         [:post (get endpoints :acs)]            (acs-handler auth-fn settings)
+                         [:get (get endpoints :metadata)]        (metadata-handler settings)
+                         [:get (get endpoints :initiate-logout)] (initiate-logout-handler settings)
+                         [:post (get endpoints :confirm-logout)] (perform-logout-handler logout-settings)}]
 
     (utils/disable-csrf-for-endpoints!
       #{[:post (get endpoints :acs)]
@@ -163,17 +161,8 @@
 
     (utils/shim-async
       (fn [request]
-        (condp = [(:request-method request) (:uri request)]
-          [:get (get endpoints :authn)]
-          (authn-handle request)
-          [:post (get endpoints :acs)]
-          (acs-handle request)
-          [:get (get endpoints :metadata)]
-          (metadata-handle request)
-          [:get (get endpoints :initiate-logout)]
-          (initiate-logout-handle request)
-          [:post (get endpoints :confirm-logout)]
-          (confirm-logout-handler request)
+        (if-some [lib-route (get dispatch-table [(:request-method request) (:uri request)])]
+          (lib-route request)
           (let [identity (utils/get-identity request)
                 expired  (utils/session-expired? request)]
             (if (and (some? identity) (not expired))
