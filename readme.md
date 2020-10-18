@@ -33,7 +33,7 @@ to exempt your SAML endpoints that consume form posts from an IDP.
     :onelogin.saml2.sp.privatekey (slurp (io/resource "sp-private-key.pem"))}})
 
 (def application
-  (-> private-page
+  (-> whoami-handler
       (sspc/wrap-saml-authentication settings)
       (defaults/wrap-defaults defaults/site-defaults)))
 
