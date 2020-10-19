@@ -37,7 +37,7 @@ to exempt your SAML endpoints that consume form posts from an IDP.
       (sspc/wrap-saml-authentication settings)
       (defaults/wrap-defaults defaults/site-defaults)))
 
-(jetty/run-jetty #'authenticated-site-handler {:port 3000 :join? false})
+(jetty/run-jetty #'application {:port 3000 :join? false})
 
 ```
 
