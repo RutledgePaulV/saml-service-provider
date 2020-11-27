@@ -46,19 +46,19 @@ Default endpoints are:
 ``` 
 
 INITIATE LOGIN: 
- /saml/login
+GET /saml/login
 
 ACS CALLBACK: 
- /saml/acs
+POST /saml/acs
 
 SP METADATA:
- /saml/metadata
+GET /saml/metadata
 
 INITIATE LOGOUT:
- /saml/initiate-logout
+GET /saml/initiate-logout
 
 LOGOUT CALLBACK:
- /saml/confirm-logout
+POST /saml/confirm-logout
  
 ```
 
