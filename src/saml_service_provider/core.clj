@@ -159,22 +159,43 @@
       #{[:post (get endpoints :acs)]
         [:post (get endpoints :confirm-logout)]})
 
-    (utils/shim-async
-      (fn [request]
-        (if-some [lib-route (get dispatch-table [(:request-method request) (:uri request)])]
-          (lib-route request)
-          (let [identity (utils/get-identity request)
-                expired  (utils/session-expired? request)]
-            (if (and (some? identity) (not expired))
-              (handler (assoc request ::identity identity))
-              (let [after-authenticate
-                    (codec/url-encode
-                      (if-not (strings/blank? (:query-string request))
-                        (str (:uri request) (str "?" (:query-string request)))
-                        (:uri request)))
-                    redirect
-                    (cond-> (get endpoints :authn)
-                      (not= "/" after-authenticate)
-                      (str "?next=" after-authenticate))]
-                (cond-> {:status 302 :headers {"Location" redirect} :body ""}
-                  expired (assoc :session nil))))))))))
+    (fn saml-authentication-handler
+      ([request]
+       (if-some [lib-route (get dispatch-table [(:request-method request) (:uri request)])]
+         (lib-route request)
+         (let [identity (utils/get-identity request)
+               expired  (utils/session-expired? request)]
+           (if (and (some? identity) (not expired))
+             (handler (assoc request ::identity identity))
+             (let [after-authenticate
+                   (codec/url-encode
+                     (if-not (strings/blank? (:query-string request))
+                       (str (:uri request) (str "?" (:query-string request)))
+                       (:uri request)))
+                   redirect
+                   (cond-> (get endpoints :authn)
+                     (not= "/" after-authenticate)
+                     (str "?next=" after-authenticate))]
+               (cond-> {:status 302 :headers {"Location" redirect} :body ""}
+                 expired (assoc :session nil)))))))
+      ([request respond raise]
+       (if-some [lib-route (get dispatch-table [(:request-method request) (:uri request)])]
+         (lib-route request respond raise)
+         (let [identity (utils/get-identity request)
+               expired  (utils/session-expired? request)]
+           (if (and (some? identity) (not expired))
+             (handler (assoc request ::identity identity) respond raise)
+             (try
+               (let [after-authenticate
+                     (codec/url-encode
+                       (if-not (strings/blank? (:query-string request))
+                         (str (:uri request) (str "?" (:query-string request)))
+                         (:uri request)))
+                     redirect
+                     (cond-> (get endpoints :authn)
+                       (not= "/" after-authenticate)
+                       (str "?next=" after-authenticate))]
+                 (respond (cond-> {:status 302 :headers {"Location" redirect} :body ""}
+                            expired (assoc :session nil))))
+               (catch Exception e
+                 (raise e))))))))))
