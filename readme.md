@@ -33,11 +33,11 @@ to exempt your SAML endpoints that consume form posts from an IDP.
     :onelogin.saml2.sp.privatekey (slurp (io/resource "sp-private-key.pem"))}})
 
 (def application
-  (-> private-page
+  (-> whoami-handler
       (sspc/wrap-saml-authentication settings)
       (defaults/wrap-defaults defaults/site-defaults)))
 
-(jetty/run-jetty #'authenticated-site-handler {:port 3000 :join? false})
+(jetty/run-jetty #'application {:port 3000 :join? false})
 
 ```
 
@@ -46,19 +46,19 @@ Default endpoints are:
 ``` 
 
 INITIATE LOGIN: 
- /saml/login
+GET /saml/login
 
 ACS CALLBACK: 
- /saml/acs
+POST /saml/acs
 
 SP METADATA:
- /saml/metadata
+GET /saml/metadata
 
 INITIATE LOGOUT:
- /saml/initiate-logout
+GET /saml/initiate-logout
 
 LOGOUT CALLBACK:
- /saml/confirm-logout
+POST /saml/confirm-logout
  
 ```
 

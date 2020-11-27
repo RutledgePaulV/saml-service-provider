@@ -129,9 +129,6 @@
    auth-fn            - an optional function to interpret the saml response data into an authenticated identity.
                         defaults to clojure.core/identity
    endpoints          - a map of uris for each of the saml endpoints being implemented by this middleware.
-   sp-base-url        - an optional base url for this app from which the service provider endpoints can be constructed
-                        for insertion into the service provider metadata, otherwise you must provide the full urls in
-                        the onelogin-settings
    idp-metadata-url   - an optional url from which to access the idp metadata. if provided metadata will be accessed,
                         parsed, and made part of the onelogin-settings for the middleware in order to configure the
                         provider settings. at this time no attempt is made to periodically refresh the idp configuration.
