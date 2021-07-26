@@ -139,7 +139,8 @@
                    idp-metadata-url
                    onelogin-settings]
             :or   {auth-fn   identity
-                   endpoints {:authn           "/saml/login"
+                   endpoints {:login           "/saml/login"
+                              :authn           "/saml/login"
                               :acs             "/saml/acs"
                               :metadata        "/saml/metadata"
                               :initiate-logout "/saml/initiate-logout"
@@ -170,7 +171,7 @@
                        (str (:uri request) (str "?" (:query-string request)))
                        (:uri request)))
                    redirect
-                   (cond-> (get endpoints :authn)
+                   (cond-> (get endpoints :login)
                      (not= "/" after-authenticate)
                      (str "?next=" after-authenticate))]
                (cond-> {:status 302 :headers {"Location" redirect} :body ""}
@@ -189,7 +190,7 @@
                          (str (:uri request) (str "?" (:query-string request)))
                          (:uri request)))
                      redirect
-                     (cond-> (get endpoints :authn)
+                     (cond-> (get endpoints :login)
                        (not= "/" after-authenticate)
                        (str "?next=" after-authenticate))]
                  (respond (cond-> {:status 302 :headers {"Location" redirect} :body ""}

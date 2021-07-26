@@ -119,7 +119,9 @@
      (throw (ex-info msg (merge data extras))))))
 
 (defn parse-idp-metadata [^String url]
-  (->> (IdPMetadataParser/parseRemoteXML (URL. url))
+  (->> (if (or (strings/starts-with? url "http://") (strings/starts-with? url "https://"))
+         (IdPMetadataParser/parseRemoteXML (URL. url))
+         (IdPMetadataParser/parseFileXML url))
        (into {} (map (fn [[k v]] [(keyword k) v])))))
 
 (alter-var-root #'parse-idp-metadata memoize)
