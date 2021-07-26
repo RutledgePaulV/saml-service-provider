@@ -1,4 +1,4 @@
-(defproject org.clojars.rutledgepaulv/saml-service-provider "0.1.3-SNAPSHOT"
+(defproject org.clojars.rutledgepaulv/saml-service-provider "0.1.3"
 
   :description
   "Middleware for implementing a saml service provider."
