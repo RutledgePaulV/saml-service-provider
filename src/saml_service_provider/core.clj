@@ -144,19 +144,16 @@
 
 
 (defn finalize-settings
-  [{:keys [auth-fn
-           endpoints
+  [{:keys [endpoints
            idp-metadata-url
            onelogin-settings]
-    :or   {auth-fn   identity
-           endpoints {:login           "/saml/login"
+    :or   {endpoints {:login           "/saml/login"
                       :authn           "/saml/login"
                       :acs             "/saml/acs"
                       :metadata        "/saml/metadata"
                       :initiate-logout "/saml/initiate-logout"
                       :confirm-logout  "/saml/confirm-logout"}}}]
-  {:auth-fn           auth-fn
-   :endpoints         endpoints
+  {:endpoints         endpoints
    :idp-metadata-url  idp-metadata-url
    :onelogin-settings onelogin-settings})
 
@@ -172,7 +169,7 @@
                         provider settings. at this time no attempt is made to periodically refresh the idp configuration.
    onelogin-settings  - a map of onelogin settings used to configure the service provider (certificates, contact info, etc)
    "
-  [handler {:keys [auth-fn] :as settings}]
+  [handler {:keys [auth-fn] :or {auth-fn identity} :as settings}]
   (let [settings        (finalize-settings settings)
         logout-settings (assoc-in settings [:onelogin-settings :onelogin.saml2.security.want_messages_signed] false)
         dispatch-table  {[:get (get-in settings [:endpoints :authn])]           (authn-handler settings)
