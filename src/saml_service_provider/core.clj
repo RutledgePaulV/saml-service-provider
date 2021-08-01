@@ -123,6 +123,44 @@
          :body    (metadata-fn (utils/request->base-url request))}))))
 
 
+(defn wrap-require-authentication [handler login-uri]
+  (utils/shim-async
+    (fn [request]
+      (let [identity (utils/get-identity request)
+            expired  (utils/session-expired? request)]
+        (if (and (some? identity) (not expired))
+          (handler (assoc request ::identity identity))
+          (let [after-authenticate
+                (codec/url-encode
+                  (if-not (strings/blank? (:query-string request))
+                    (str (:uri request) (str "?" (:query-string request)))
+                    (:uri request)))
+                redirect
+                (cond-> login-uri
+                  (not= "/" after-authenticate)
+                  (str "?next=" after-authenticate))]
+            (cond-> {:status 302 :headers {"Location" redirect} :body ""}
+              expired (assoc :session nil))))))))
+
+
+(defn finalize-settings
+  [{:keys [auth-fn
+           endpoints
+           idp-metadata-url
+           onelogin-settings]
+    :or   {auth-fn   identity
+           endpoints {:login           "/saml/login"
+                      :authn           "/saml/login"
+                      :acs             "/saml/acs"
+                      :metadata        "/saml/metadata"
+                      :initiate-logout "/saml/initiate-logout"
+                      :confirm-logout  "/saml/confirm-logout"}}}]
+  {:auth-fn           auth-fn
+   :endpoints         endpoints
+   :idp-metadata-url  idp-metadata-url
+   :onelogin-settings onelogin-settings})
+
+
 (defn wrap-saml-authentication
   "Wraps a ring handler with required SAML authentication.
 
@@ -134,66 +172,24 @@
                         provider settings. at this time no attempt is made to periodically refresh the idp configuration.
    onelogin-settings  - a map of onelogin settings used to configure the service provider (certificates, contact info, etc)
    "
-  [handler {:keys [auth-fn
-                   endpoints
-                   idp-metadata-url
-                   onelogin-settings]
-            :or   {auth-fn   identity
-                   endpoints {:login           "/saml/login"
-                              :authn           "/saml/login"
-                              :acs             "/saml/acs"
-                              :metadata        "/saml/metadata"
-                              :initiate-logout "/saml/initiate-logout"
-                              :confirm-logout  "/saml/confirm-logout"}}}]
-  (let [settings        {:endpoints endpoints :idp-metadata-url idp-metadata-url :onelogin-settings onelogin-settings}
+  [handler {:keys [auth-fn] :as settings}]
+  (let [settings        (finalize-settings settings)
         logout-settings (assoc-in settings [:onelogin-settings :onelogin.saml2.security.want_messages_signed] false)
-        dispatch-table  {[:get (get endpoints :authn)]           (authn-handler settings)
-                         [:post (get endpoints :acs)]            (acs-handler auth-fn settings)
-                         [:get (get endpoints :metadata)]        (metadata-handler settings)
-                         [:get (get endpoints :initiate-logout)] (initiate-logout-handler settings)
-                         [:post (get endpoints :confirm-logout)] (perform-logout-handler logout-settings)}]
-
+        dispatch-table  {[:get (get-in settings [:endpoints :authn])]           (authn-handler settings)
+                         [:post (get-in settings [:endpoints :acs])]            (acs-handler auth-fn settings)
+                         [:get (get-in settings [:endpoints :metadata])]        (metadata-handler settings)
+                         [:get (get-in settings [:endpoints :initiate-logout])] (initiate-logout-handler settings)
+                         [:post (get settings [:endpoints :confirm-logout])]    (perform-logout-handler logout-settings)}
+        wrapped         (wrap-require-authentication handler (get-in settings [:endpoints :login]))]
     (utils/disable-csrf-for-endpoints!
-      #{[:post (get endpoints :acs)]
-        [:post (get endpoints :confirm-logout)]})
-
+      #{[:post (get-in settings [:endpoints :acs])]
+        [:post (get settings [:endpoints :confirm-logout])]})
     (fn saml-authentication-handler
       ([request]
        (if-some [lib-route (get dispatch-table [(:request-method request) (:uri request)])]
          (lib-route request)
-         (let [identity (utils/get-identity request)
-               expired  (utils/session-expired? request)]
-           (if (and (some? identity) (not expired))
-             (handler (assoc request ::identity identity))
-             (let [after-authenticate
-                   (codec/url-encode
-                     (if-not (strings/blank? (:query-string request))
-                       (str (:uri request) (str "?" (:query-string request)))
-                       (:uri request)))
-                   redirect
-                   (cond-> (get endpoints :login)
-                     (not= "/" after-authenticate)
-                     (str "?next=" after-authenticate))]
-               (cond-> {:status 302 :headers {"Location" redirect} :body ""}
-                 expired (assoc :session nil)))))))
+         (wrapped request)))
       ([request respond raise]
        (if-some [lib-route (get dispatch-table [(:request-method request) (:uri request)])]
          (lib-route request respond raise)
-         (let [identity (utils/get-identity request)
-               expired  (utils/session-expired? request)]
-           (if (and (some? identity) (not expired))
-             (handler (assoc request ::identity identity) respond raise)
-             (try
-               (let [after-authenticate
-                     (codec/url-encode
-                       (if-not (strings/blank? (:query-string request))
-                         (str (:uri request) (str "?" (:query-string request)))
-                         (:uri request)))
-                     redirect
-                     (cond-> (get endpoints :login)
-                       (not= "/" after-authenticate)
-                       (str "?next=" after-authenticate))]
-                 (respond (cond-> {:status 302 :headers {"Location" redirect} :body ""}
-                            expired (assoc :session nil))))
-               (catch Exception e
-                 (raise e))))))))))
+         (wrapped request respond raise))))))
